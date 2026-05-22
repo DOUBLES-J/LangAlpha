@@ -13,15 +13,24 @@ interface ErrorBannerProps {
 
 function ErrorLink({ url, label }: { url: string; label: string }) {
   const navigate = useNavigate();
-  const isInternal = url.startsWith('/');
+  const isRelative = url.startsWith('/') && !url.startsWith('//');
+  // Same-origin absolute URLs (e.g. the platform portal on ginlix.ai) navigate
+  // in the current tab; only cross-origin URLs open in a new tab.
+  const isCrossOrigin = !isRelative && (() => {
+    try {
+      return new URL(url, window.location.href).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  })();
   return (
     <>
       {' '}
       <a
         href={url}
-        {...(!isInternal && { target: '_blank', rel: 'noopener noreferrer' })}
+        {...(isCrossOrigin && { target: '_blank', rel: 'noopener noreferrer' })}
         onClick={(e) => {
-          if (isInternal) {
+          if (isRelative) {
             e.preventDefault();
             navigate(url);
           }

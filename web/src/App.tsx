@@ -16,10 +16,10 @@ import './App.css';
 const SetupWizard = React.lazy(() => import('./pages/Setup/SetupWizard'));
 const PrivacyPolicy = React.lazy(() => import('./pages/Legal/PrivacyPolicy'));
 const Legal = React.lazy(() => import('./pages/Legal/Legal'));
-const LandingPage = React.lazy(() => import('./pages/Landing/LandingPage'));
 
-// In platform mode, `/` is the landing page and `/app` is the application entry.
-// In OSS mode, `/` is the application entry (login or redirect to dashboard).
+// In platform mode, `/` is served externally (marketing landing via nginx) and
+// the SPA owns `/app` for the login/entry screen. In OSS mode, the SPA owns `/`
+// directly. Anywhere we redirect an unauthenticated user, route via this.
 const APP_ENTRY_PATH = isPlatformMode ? '/app' : '/';
 
 /**
@@ -52,7 +52,7 @@ function AuthCallback() {
 
     const params = new URLSearchParams(window.location.search);
     const redirectTo = params.get('redirect');
-    if (redirectTo && (redirectTo.startsWith('/') || redirectTo.startsWith('http'))) {
+    if (redirectTo && isSafeRedirect(redirectTo)) {
       window.location.href = redirectTo;
       return;
     }
@@ -66,11 +66,22 @@ function AuthCallback() {
   );
 }
 
+// Rejects protocol-relative URLs (`//evil.com/x`) and cross-origin absolutes —
+// both would let `?redirect=` be weaponized for phishing after OAuth.
+function isSafeRedirect(target: string): boolean {
+  if (target.startsWith('/') && !target.startsWith('//')) return true;
+  try {
+    return new URL(target).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 /** Redirects to dashboard or a ?redirect= target after login. */
 function RootRedirect() {
   const params = new URLSearchParams(window.location.search);
   const redirectTo = params.get('redirect');
-  if (redirectTo && (redirectTo.startsWith('/') || redirectTo.startsWith('http'))) {
+  if (redirectTo && isSafeRedirect(redirectTo)) {
     window.location.href = redirectTo;
     return null;
   }
@@ -130,21 +141,7 @@ function App() {
   return (
     <Routes>
       {isPlatformMode ? (
-        <>
-          <Route
-            path="/"
-            element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: 'var(--color-bg-page)' }}>
-                  <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t('common.loading')}</p>
-                </div>
-              }>
-                <LandingPage />
-              </Suspense>
-            }
-          />
-          <Route path="/app" element={appEntryElement} />
-        </>
+        <Route path="/app" element={appEntryElement} />
       ) : (
         <Route path="/" element={appEntryElement} />
       )}

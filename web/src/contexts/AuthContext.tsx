@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { setTokenGetter } from '../api/client';
 import { queryKeys } from '../lib/queryKeys';
+import { OAUTH_BROADCAST_CHANNEL, OAUTH_POPUP_WINDOW_NAME, OAUTH_POPUP_FEATURES } from '../lib/oauthPopup';
 
 import type { AuthResponse, OAuthResponse, Provider, Session } from '@supabase/supabase-js';
 
@@ -158,13 +159,51 @@ function SupabaseAuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loginWithProvider = useCallback(
-    (provider: Provider) =>
-      sb.auth.signInWithOAuth({
+    async (provider: Provider) => {
+      // Pop OAuth into a sized child window. Opening synchronously in the click
+      // handler preserves the user-gesture so popup blockers don't fire; doing
+      // it as a popup sidesteps the browsers/extensions that re-target a plain
+      // window.location.href on cross-origin nav into a brand-new tab.
+      const popup = window.open('about:blank', OAUTH_POPUP_WINDOW_NAME, OAUTH_POPUP_FEATURES);
+
+      const result = await sb.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin + '/callback' },
-      }),
+        options: {
+          redirectTo: window.location.origin + '/callback',
+          skipBrowserRedirect: true,
+        },
+      });
+
+      const url = result.data?.url;
+      if (popup && url) {
+        popup.location.href = url;
+      } else if (url) {
+        // Popup was blocked — fall back to same-tab navigation.
+        window.location.href = url;
+      }
+      return result;
+    },
     [sb.auth]
   );
+
+  // The popup writes the session cookie then broadcasts here. Manually re-read
+  // the session because cookie writes don't trigger storage events the way
+  // localStorage would, so the opener's onAuthStateChange stays silent until
+  // we ask.
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(OAUTH_BROADCAST_CHANNEL);
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'oauth-complete') {
+        sb.auth.getSession();
+      }
+    };
+    channel.addEventListener('message', onMessage);
+    return () => {
+      channel.removeEventListener('message', onMessage);
+      channel.close();
+    };
+  }, [sb]);
 
   const logout = useCallback(async () => {
     await sb.auth.signOut();

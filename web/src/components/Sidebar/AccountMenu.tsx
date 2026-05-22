@@ -38,9 +38,8 @@ const AccountMenu: React.FC = () => {
 
   const displayName = (user?.display_name as string) || user?.name || '';
   const email = user?.email || '';
-  // 'Free' is the default-plan fallback (auth_plans.is_default), not a paid
-  // tier — flair is reserved for paid plans so it reads as a status signal.
-  // Mirrors ginlix-platform/Layout.jsx so both sidebars agree on what to show.
+  // 'Free' is the default-plan fallback, not a paid tier — flair is reserved
+  // for paid plans so it reads as a status signal.
   // isPlatformMode (= HOST_MODE === 'platform') is the canonical gate — OSS
   // builds never render plan flair regardless of what's on the user object.
   const rawPlanDisplayName = isPlatformMode
@@ -161,8 +160,6 @@ const AccountMenu: React.FC = () => {
             <DropdownMenuItem asChild>
               <a
                 href={accountUrl}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="flex items-center gap-2"
                 style={{
                   backgroundColor: 'var(--color-accent-soft)',
